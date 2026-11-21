@@ -1,0 +1,49 @@
+name: Port kobi customizations
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  port:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Merge kobianyi into Nova
+        run: |
+          set -eux
+          git config user.name "port-bot"
+          git config user.email "port-bot@users.noreply.github.com"
+          git config merge.renameLimit 0
+          git remote add kobi https://github.com/Whiteink666/kobianyi.git
+          git fetch --no-tags kobi main
+          echo "MERGE_BASE: $(git merge-base origin/main kobi/main)"
+          git checkout -B port/kobi origin/main
+          git -c merge.renameLimit=0 merge --no-commit --no-ff -Xfind-renames=45% kobi/main || true
+
+      - name: Collect status
+        run: |
+          set -ux
+          {
+            echo "## unmerged ($(git diff --name-only --diff-filter=U | wc -l))"
+            git diff --name-only --diff-filter=U
+            echo
+            echo "## staged diffstat"
+            git add -A
+            git diff --cached --stat origin/main | tail -30
+          } | tee /tmp/report.txt
+          cat /tmp/report.txt >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit merge with markers and push
+        run: |
+          set -eux
+          # Workflow files cannot be pushed with GITHUB_TOKEN; keep upstream versions for now.
+          git checkout origin/main -- .github/workflows
+          git add -A
+          git commit -q -m "wip: merge kobianyi customizations onto SukiSU-Nova (conflicts marked)" || echo "nothing to commit"
+          git push -f origin port/kobi
